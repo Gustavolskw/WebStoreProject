@@ -1,0 +1,1 @@
+INSERT INTO t_inventory (product_name, quantity) VALUES('IPhone_15', 100),('Chocolat_bar', 1000),('stone',500);

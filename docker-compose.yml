@@ -1,0 +1,119 @@
+version: "4"
+
+services:
+  # Serviço MySQL
+  mysql:
+    image: mysql:8.3.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-mysql} # Usar variável de ambiente
+    ports:
+      - "3307:3306" # Mapear a porta 3306 do MySQL para 3307 no host
+    volumes:
+      - ./mysql:/var/lib/mysql # Persistência de dados
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql # Iniciar com SQL de configuração
+    networks:
+      - sail # Coloca o MySQL na rede 'sail'
+
+  auth-service-laravel:
+    build:
+      context: ./AuthService # Defina o contexto como a pasta AuthService
+      dockerfile: Dockerfile
+      args:
+        WWWGROUP: "${WWWGROUP:-1000}"
+    image: "sail-8.4/app"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${APP_PORT:-80}:80"
+      - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"
+    environment:
+      WWWUSER: "${WWWUSER:-1000}"
+      LARAVEL_SAIL: 1
+      XDEBUG_MODE: "${SAIL_XDEBUG_MODE:-off}"
+      XDEBUG_CONFIG: "${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}"
+      IGNITION_LOCAL_SITES_PATH: "${PWD}"
+    volumes:
+      - "./AuthService:/var/www/html" # Certifique-se de que está montando a pasta AuthService
+    networks:
+      - sail
+    depends_on:
+      - mysql
+      - redis
+    working_dir: /var/www/html # Defina o diretório de trabalho corretamente
+
+  consumer-service-laravel:
+      build:
+        context: ./ConsumerService # Defina o contexto como a pasta AuthService
+        dockerfile: Dockerfile
+        args:
+          WWWGROUP: "${WWWGROUP:-1000}"
+      image: "sail-8.4/app"
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+      ports:
+        - "81:81"
+        - "5174:5173"
+      environment:
+        WWWUSER: "${WWWUSER:-1000}"
+        LARAVEL_SAIL: 1
+        XDEBUG_MODE: "${SAIL_XDEBUG_MODE:-off}"
+        XDEBUG_CONFIG: "${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}"
+        IGNITION_LOCAL_SITES_PATH: "${PWD}"
+      volumes:
+        - "./ConsumerService:/var/www/html" # Certifique-se de que está montando a pasta AuthService
+      networks:
+        - sail
+      depends_on:
+        - mysql
+        - redis
+      working_dir: /var/www/html # Defina o diretório de trabalho corretamente
+
+  # Serviço Redis
+  redis:
+    image: redis:latest
+    container_name: redis-container
+    ports:
+      - "6379:6379" # Porta para comunicação com Redis
+    networks:
+      - sail # Conectar na rede 'sail'
+
+  # Serviço RabbitMQ com plugin de gerenciamento
+  rabbitmq:
+    image: rabbitmq:management
+    container_name: rabbitmq-container
+    ports:
+      - "15672:15672" # Interface web de gerenciamento
+      - "5672:5672" # Porta padrão do protocolo AMQP
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-guest} # Usuário (definido por variável de ambiente)
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-guest} # Senha (definido por variável de ambiente)
+    networks:
+      - sail # Conectar na rede 'sail'
+
+  # Serviço MongoDB
+  mongodb:
+    image: mongo:7.0.5
+    container_name: mongodb
+    ports:
+      - "27017:27017" # Porta para comunicação com o MongoDB
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-root} # Usuário raiz do MongoDB
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-password} # Senha do MongoDB
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-product-service} # Nome do banco de dados inicial
+    volumes:
+      - ./data/mongodb:/data/db # Persistência de dados
+    networks:
+      - sail # Conectar na rede 'sail'
+
+networks:
+  sail:
+    driver: bridge # Rede isolada entre os contêineres
+
+volumes:
+  sail-mysql:
+    driver: local # Volume para o MySQL
+  sail-redis:
+    driver: local # Volume para o Redis
+  sail-meilisearch:
+    driver: local # Volume para o MeiliSearch (se for necessário)
